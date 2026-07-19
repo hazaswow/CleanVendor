@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: CleanVendor
+## Notes: Search bar and filters for merchant windows (weapon/armor types, one-hand/two-hand), tooltip text search, and red-gray tint on items you cannot equip. Standalone.
+## Notes-frFR: Barre de recherche et filtres chez les vendeurs (types d'armes/armures, 1 main/2 mains), recherche dans le texte des tooltips, et teinte rouge-grisee sur les objets non equipables. Autonome.
+## Author: Hazas
+## Version: 1.3
+## SavedVariables: CleanVendorDB
+
+CleanVendor.lua
