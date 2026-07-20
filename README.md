@@ -7,7 +7,7 @@ A search panel attached to merchant windows for **WoW 3.3.5**, built and tested 
 - **Search bar** matching item names **and tooltip content** (stats, effects, descriptions)
 - **Filters**: weapons (**one-hand / two-hand / ranged** / by type: axes, swords…), armor by type (cloth, leather, mail, plate, shields), plus every other item category — category names come from the client itself, so they are always in your language
 - **Red-gray tint** on combat gear you **cannot equip** (missing weapon/armor proficiency) — both in the list and on the native merchant grid
-- **Quick buying** from the list: right-click = buy 1, **Shift+right-click = choose any amount** (automatically splits beyond stack size: ask for 300 potions and the addon chains the purchases)
+- **Quick buying** from the list: right-click = buy 1, **Alt+right-click = choose any amount** (automatically splits beyond stack size: ask for 300 potions and the addon chains the purchases)
 - Full item tooltip on hover; Shift+left-click to link an item in chat
 - Automatic **EN/FR localization** based on the client language
 

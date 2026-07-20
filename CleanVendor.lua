@@ -15,9 +15,12 @@ local LOCALES = {
         FILTER_ONEHAND = "One-handed",
         FILTER_TWOHAND = "Two-handed",
         FILTER_RANGED  = "Ranged",
-        BUY_HINT      = "Right-click: buy 1  |  Shift+right-click: choose amount",
+        BUY_HINT      = "Right-click: buy 1  |  Alt+right-click: choose amount",
         BUY_PROMPT    = "Buy how many?",
         NO_RESULTS    = "No matching items",
+        OPT_HEADER    = "Options",
+        OPT_RED       = "Red tint on unusable gear",
+        OPT_RED_NATIVE = "Also tint the merchant grid",
         MSG_RED_ON    = "red tint on unusable items: enabled.",
         MSG_RED_OFF   = "red tint on unusable items: disabled.",
         HELP_HEADER   = "available commands:",
@@ -30,9 +33,12 @@ local LOCALES = {
         FILTER_ONEHAND = "Une main",
         FILTER_TWOHAND = "Deux mains",
         FILTER_RANGED  = "A distance",
-        BUY_HINT      = "Clic droit : acheter 1  |  Maj+clic droit : choisir la quantite",
+        BUY_HINT      = "Clic droit : acheter 1  |  Alt+clic droit : choisir la quantite",
         BUY_PROMPT    = "Acheter combien ?",
         NO_RESULTS    = "Aucun objet correspondant",
+        OPT_HEADER    = "Options",
+        OPT_RED       = "Teinte rouge sur le stuff inutilisable",
+        OPT_RED_NATIVE = "Teinter aussi la grille du marchand",
         MSG_RED_ON    = "teinte rouge sur les objets inutilisables : activee.",
         MSG_RED_OFF   = "teinte rouge sur les objets inutilisables : desactivee.",
         HELP_HEADER   = "commandes disponibles:",
@@ -146,7 +152,7 @@ local function GetMerchantItemScan(index)
                 -- works even when the server's isUsable flag reports nothing
                 -- (the case on classless servers like CoA).
                 local r, g, b = fs:GetTextColor()
-                if r and r > 0.9 and g < 0.3 and b < 0.3 then
+                if r and r >= 0.98 and g <= 0.15 and b <= 0.15 then
                     result.unusable = true
                 end
             end
@@ -270,47 +276,93 @@ local function BuyAmount(index, total)
     end
 end
 
-StaticPopupDialogs["CLEANVENDOR_BUY_AMOUNT"] = {
-    text = "%s",
-    button1 = ACCEPT,
-    button2 = CANCEL,
-    hasEditBox = 1,
-    maxLetters = 4,
-    timeout = 0,
-    hideOnEscape = 1,
-    whileDead = 1,
-    OnShow = function(self)
-        local eb = _G[self:GetName().."EditBox"]
-        if eb then
-            eb:SetNumeric(true)
-            eb:SetText("")
-            eb:SetFocus()
+-- Homemade amount prompt: on this client the native Shift+click appears to
+-- trigger its own "buy a stack" behavior through the active merchant
+-- tooltip, bypassing any StaticPopup we could show. So the amount prompt
+-- (1) lives on Alt+right-click instead, and (2) uses our own small input
+-- frame rather than the native StaticPopup system.
+local amountFrame
+
+local function CreateAmountFrame()
+    if amountFrame then return amountFrame end
+
+    local f = CreateFrame("Frame", "CleanVendorAmountFrame", UIParent)
+    f:SetSize(220, 90)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    f:SetFrameStrata("DIALOG")
+    f:EnableMouse(true)
+    EnsureBackdropSupport(f)
+    f:SetBackdrop({
+        bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        tile = false, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    f:SetBackdropColor(0.06, 0.06, 0.06, 0.98)
+    f:SetBackdropBorderColor(0, 0, 0, 1)
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("TOP", 0, -8)
+    title:SetPoint("LEFT", 8, 0)
+    title:SetPoint("RIGHT", -8, 0)
+    title:SetJustifyH("CENTER")
+    f.__title = title
+
+    local eb = CreateFrame("EditBox", "CleanVendorAmountEditBox", f)
+    eb:SetSize(80, 18)
+    eb:SetPoint("TOP", 0, -34)
+    eb:SetAutoFocus(true)
+    eb:SetNumeric(true)
+    eb:SetMaxLetters(4)
+    eb:SetFontObject(ChatFontNormal)
+    eb:SetJustifyH("CENTER")
+    EnsureBackdropSupport(eb)
+    eb:SetBackdrop({
+        bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        tile = false, edgeSize = 1,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    eb:SetBackdropColor(0.02, 0.02, 0.02, 1)
+    eb:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)
+    eb:SetTextInsets(4, 4, 0, 0)
+    f.__editBox = eb
+
+    local function DoAccept()
+        if f.__index then
+            BuyAmount(f.__index, eb:GetNumber())
         end
-    end,
-    OnAccept = function(self)
-        local eb = _G[self:GetName().."EditBox"]
-        if eb and self.data then
-            BuyAmount(self.data, eb:GetNumber())
-        end
-    end,
-    EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        if parent.data then
-            BuyAmount(parent.data, self:GetNumber())
-        end
-        parent:Hide()
-    end,
-    EditBoxOnEscapePressed = function(self)
-        self:GetParent():Hide()
-    end,
-}
+        f:Hide()
+    end
+
+    eb:SetScript("OnEnterPressed", DoAccept)
+    eb:SetScript("OnEscapePressed", function() f:Hide() end)
+
+    local okBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    okBtn:SetSize(80, 20)
+    okBtn:SetPoint("BOTTOMLEFT", 12, 10)
+    okBtn:SetText(ACCEPT or "Accept")
+    okBtn:SetScript("OnClick", DoAccept)
+
+    local cancelBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    cancelBtn:SetSize(80, 20)
+    cancelBtn:SetPoint("BOTTOMRIGHT", -12, 10)
+    cancelBtn:SetText(CANCEL or "Cancel")
+    cancelBtn:SetScript("OnClick", function() f:Hide() end)
+
+    f:Hide()
+    amountFrame = f
+    return f
+end
 
 local function PromptBuyAmount(index)
     local name = GetMerchantItemInfo(index)
-    local dialog = StaticPopup_Show("CLEANVENDOR_BUY_AMOUNT", L.BUY_PROMPT.."\n"..(name or ""))
-    if dialog then
-        dialog.data = index
-    end
+    local f = CreateAmountFrame()
+    f.__index = index
+    f.__title:SetText(L.BUY_PROMPT.."\n"..(name or ""))
+    f.__editBox:SetText("")
+    f:Show()
+    f.__editBox:SetFocus()
 end
 
 -------------------------------------------------
@@ -321,6 +373,7 @@ local LINE_HEIGHT = 20
 
 local panel
 local RefreshList
+local ScheduleNativeTint
 
 local function CreateLine(parent, i)
     local line = CreateFrame("Button", nil, parent)
@@ -340,7 +393,7 @@ local function CreateLine(parent, i)
     -- not depend on the texture's rendering and works everywhere.
     local redOverlay = line:CreateTexture(nil, "OVERLAY")
     redOverlay:SetAllPoints(icon)
-    redOverlay:SetTexture(0.9, 0.1, 0.1, 0.45)
+    redOverlay:SetTexture(0.45, 0.06, 0.06, 0.6)
     redOverlay:Hide()
     line.__redOverlay = redOverlay
 
@@ -373,8 +426,14 @@ local function CreateLine(parent, i)
     line:SetScript("OnClick", function(self, button)
         if not self.__index then return end
         if button == "RightButton" then
-            if IsShiftKeyDown() then
+            if IsAltKeyDown() then
                 PromptBuyAmount(self.__index)
+            elseif IsShiftKeyDown() then
+                -- Deliberately do nothing: on this client, Shift+click seems
+                -- to trigger a native "buy a stack" shortcut through the
+                -- active merchant tooltip. Adding our own action on top
+                -- would stack purchases unpredictably.
+                return
             else
                 BuyMerchantItem(self.__index)
             end
@@ -391,8 +450,14 @@ local function CreatePanel()
     if panel then return panel end
 
     local f = CreateFrame("Frame", "CleanVendorPanel", MerchantFrame)
-    f:SetSize(230, 58 + NUM_LINES * LINE_HEIGHT + 10)
-    f:SetPoint("TOPLEFT", MerchantFrame, "TOPRIGHT", -32, -12)
+    f:SetSize(230, 58 + NUM_LINES * LINE_HEIGHT + 66)
+    f:SetPoint("TOPLEFT", MerchantFrame, "TOPRIGHT", -30, -12)
+    -- LOW strata: stays above the world but below standard interface
+    -- windows (item appearance preview, etc.), so the panel never covers
+    -- them. User-confirmed: the small overlap with the merchant window is
+    -- not an issue on CoA's merchant UI. Tooltips and dropdown lists render
+    -- on higher strata regardless.
+    f:SetFrameStrata("LOW")
     EnsureBackdropSupport(f)
     f:SetBackdrop({
         bgFile   = "Interface\\ChatFrame\\ChatFrameBackground",
@@ -537,7 +602,7 @@ local function CreatePanel()
     -- Scrollable list
     local scroll = CreateFrame("ScrollFrame", "CleanVendorScroll", f, "FauxScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 8, -58)
-    scroll:SetPoint("BOTTOMRIGHT", -28, 8)
+    scroll:SetPoint("BOTTOMRIGHT", -28, 64)
     scroll:SetScript("OnVerticalScroll", function(self, offset)
         FauxScrollFrame_OnVerticalScroll(self, offset, LINE_HEIGHT, function() RefreshList(false) end)
     end)
@@ -553,6 +618,51 @@ local function CreatePanel()
     empty:SetText(L.NO_RESULTS)
     empty:Hide()
     f.__empty = empty
+
+    -- Options area at the bottom (fills the height gap between the panel
+    -- and the taller native merchant window).
+    local optTop = 58 + NUM_LINES * LINE_HEIGHT + 4
+
+    local sep = f:CreateTexture(nil, "ARTWORK")
+    sep:SetPoint("TOPLEFT", 8, -optTop)
+    sep:SetPoint("TOPRIGHT", -8, -optTop)
+    sep:SetHeight(1)
+    sep:SetTexture(0.25, 0.25, 0.25, 1)
+
+    local function MakeOption(name, label, offsetY, getter, onToggle)
+        local cb = CreateFrame("CheckButton", name, f, "UICheckButtonTemplate")
+        cb:SetSize(22, 22)
+        cb:SetPoint("TOPLEFT", 6, -(optTop + offsetY))
+        local text = _G[name.."Text"]
+        if text then
+            text:SetText(label)
+            local fnt = text:GetFont()
+            if fnt then text:SetFont(fnt, 10, "") end
+        end
+        cb.__getter = getter
+        cb:SetScript("OnClick", function(self)
+            onToggle(self:GetChecked() and true or false)
+            RefreshList(false)
+            ScheduleNativeTint()
+        end)
+        table.insert(f.__optionButtons, cb)
+        return cb
+    end
+
+    f.__optionButtons = {}
+    MakeOption("CleanVendorOptRed", L.OPT_RED, 4,
+        function() return CleanVendorDB.redTint end,
+        function(v) CleanVendorDB.redTint = v end)
+    MakeOption("CleanVendorOptRedNative", L.OPT_RED_NATIVE, 26,
+        function() return CleanVendorDB.redTintNative end,
+        function(v) CleanVendorDB.redTintNative = v end)
+
+    f.__RefreshOptions = function()
+        for _, cb in ipairs(f.__optionButtons) do
+            cb:SetChecked(cb.__getter() and true or false)
+        end
+    end
+    f.__RefreshOptions()
 
     panel = f
     return f
@@ -640,7 +750,7 @@ local function GetNativeOverlay(i)
     local icon = _G["MerchantItem"..i.."ItemButtonIconTexture"]
     local ov = btn:CreateTexture(nil, "OVERLAY")
     if icon then ov:SetAllPoints(icon) else ov:SetAllPoints(btn) end
-    ov:SetTexture(0.9, 0.1, 0.1, 0.45)
+    ov:SetTexture(0.45, 0.06, 0.06, 0.6)
     ov:Hide()
     nativeOverlays[i] = ov
     return ov
@@ -656,7 +766,7 @@ local function TintNativeSlots()
         local icon = _G["MerchantItem"..i.."ItemButtonIconTexture"]
         local ov = GetNativeOverlay(i)
         if icon then
-            if CleanVendorDB.redTint and index <= total and IsMerchantItemUnusable(index) then
+            if CleanVendorDB.redTint and CleanVendorDB.redTintNative and index <= total and IsMerchantItemUnusable(index) then
                 icon:SetDesaturated(true)
                 icon:SetVertexColor(0.9, 0.3, 0.3)
                 if ov then ov:Show() end
@@ -680,7 +790,7 @@ tintDelayer:SetScript("OnUpdate", function(self)
     pcall(TintNativeSlots)
 end)
 
-local function ScheduleNativeTint()
+ScheduleNativeTint = function()
     tintDelayer:Show()
 end
 
@@ -705,6 +815,7 @@ SlashCmdList["CLEANVENDOR"] = function(msg)
         CleanVendorDB.redTint = not CleanVendorDB.redTint
         print(MSG .. (CleanVendorDB.redTint and L.MSG_RED_ON or L.MSG_RED_OFF))
         if panel and panel:IsShown() then RefreshList(false) end
+        if panel and panel.__RefreshOptions then panel.__RefreshOptions() end
         ScheduleNativeTint()
     else
         print(MSG .. L.HELP_HEADER)
@@ -724,6 +835,7 @@ watcher:RegisterEvent("MERCHANT_CLOSED")
 watcher:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "CleanVendor" then
         if CleanVendorDB.redTint == nil then CleanVendorDB.redTint = true end
+        if CleanVendorDB.redTintNative == nil then CleanVendorDB.redTintNative = true end
     elseif event == "MERCHANT_SHOW" then
         wipe(tooltipCache)
         searchText = ""
@@ -734,6 +846,7 @@ watcher:SetScript("OnEvent", function(self, event, arg1)
             return
         end
         if panel.__dd then UIDropDownMenu_SetText(panel.__dd, L.FILTER_ALL) end
+        if panel.__RefreshOptions then panel.__RefreshOptions() end
         local sb = _G["CleanVendorSearchBox"]
         if sb then sb:SetText("") end
         RefreshList(true)

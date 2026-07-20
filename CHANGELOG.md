@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5
+- The panel now sits on the LOW frame strata so it no longer covers interface windows such as the item appearance preview.
+- Added a small options area at the bottom of the panel: toggle the red tint, and choose whether the native merchant grid is tinted too.
+- Panel anchoring adjusted to CoA's compact merchant window (no more overlap).
+
+## 1.4
+- Amount prompt moved to **Alt+right-click** (the client appears to have its own native Shift+click "buy a stack" shortcut which bypassed and conflicted with our prompt; Shift+right-click on our list is now deliberately inert).
+- The amount prompt now uses a homemade input window instead of the native StaticPopup system.
+- Red tint darkened toward a desaturated dark red, and detection threshold tightened to reduce false positives.
+
+
 ## 1.3
 - Added buy-by-amount: Shift+right-click a list line opens an amount prompt; purchases are automatically chained beyond stack size (safety cap: 1000).
 
