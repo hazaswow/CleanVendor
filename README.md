@@ -6,8 +6,9 @@ A search panel attached to merchant windows for **WoW 3.3.5**, built and tested 
 
 - **Search bar** matching item names **and tooltip content** (stats, effects, descriptions)
 - **Filters**: weapons (**one-hand / two-hand / ranged** / by type: axes, swords…), armor by type (cloth, leather, mail, plate, shields), plus every other item category — category names come from the client itself, so they are always in your language
+- **Price display** on the right of each line, using **currency icons** rather than text: gold/silver/copper for money, and the proper icon for alternate currencies (Valor, Marks, emblems, honor…). Works with items that cost a mix of money and tokens.
 - **Red-gray tint** on combat gear you **cannot equip** (missing weapon/armor proficiency) — both in the list and on the native merchant grid
-- **Quick buying** from the list: right-click = buy 1, **Alt+right-click = choose any amount** (automatically splits beyond stack size: ask for 300 potions and the addon chains the purchases)
+- **Quick buying** from the list: right-click = buy 1, **Alt+right-click = choose any amount** (automatically splits beyond stack size: ask for 300 potions and the addon chains the purchases). The amount prompt shows a **live total cost** with currency icons that updates as you type.
 - Full item tooltip on hover; Shift+left-click to link an item in chat
 - Automatic **EN/FR localization** based on the client language
 
@@ -29,6 +30,7 @@ A search panel attached to merchant windows for **WoW 3.3.5**, built and tested 
 
 - The tint only applies to combat-equippable gear (weapons, armor, jewelry). Cosmetic items, containers, consumables and recipes are never tinted.
 - Unequippable detection uses the tooltip's red requirement lines — the same visual signal the game itself uses — so it works even on classless servers where the native `isUsable` flag reports nothing.
+- Alternate-currency prices rely on the merchant cost API. On CoA, `GetMerchantItemCostInfo` returns the slot count as its **third** value (`honor, arena, itemCount`), unlike stock 3.3.5 — CleanVendor accounts for this.
 
 ## Author
 

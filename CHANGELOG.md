@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6
+- Each list line now shows the item's **price** on the right, using **currency icons** instead of names: gold/silver/copper for money, and the icon returned by the merchant API for alternate currencies (Valor, Marks, emblems, honor…). Mixed money+token costs are supported.
+- The **Alt+right-click amount prompt** now shows a **live total cost** (price × amount, with icons) that updates as you type. The total mirrors the real purchase logic, so lot-sold items (e.g. 5 per purchase) are counted per lot, not per unit.
+- Item names in the list truncate before overlapping their price rather than colliding with it.
+- Fixed alternate-currency prices not showing on Ascension/CoA: `GetMerchantItemCostInfo` returns the slot count as its third value there (`honor, arena, itemCount`), not the first as on stock 3.3.5.
+- Added a hidden `/cvd diag N` command to inspect the merchant cost API for a given item index (kept for future exotic-currency debugging).
+
 ## 1.5
 - The panel now sits on the LOW frame strata so it no longer covers interface windows such as the item appearance preview.
 - Added a small options area at the bottom of the panel: toggle the red tint, and choose whether the native merchant grid is tinted too.

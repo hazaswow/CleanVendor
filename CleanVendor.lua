@@ -17,6 +17,7 @@ local LOCALES = {
         FILTER_RANGED  = "Ranged",
         BUY_HINT      = "Right-click: buy 1  |  Alt+right-click: choose amount",
         BUY_PROMPT    = "Buy how many?",
+        BUY_TOTAL     = "Total:",
         NO_RESULTS    = "No matching items",
         OPT_HEADER    = "Options",
         OPT_RED       = "Red tint on unusable gear",
@@ -35,6 +36,7 @@ local LOCALES = {
         FILTER_RANGED  = "A distance",
         BUY_HINT      = "Clic droit : acheter 1  |  Alt+clic droit : choisir la quantite",
         BUY_PROMPT    = "Acheter combien ?",
+        BUY_TOTAL     = "Total :",
         NO_RESULTS    = "Aucun objet correspondant",
         OPT_HEADER    = "Options",
         OPT_RED       = "Teinte rouge sur le stuff inutilisable",
@@ -282,12 +284,13 @@ end
 -- (1) lives on Alt+right-click instead, and (2) uses our own small input
 -- frame rather than the native StaticPopup system.
 local amountFrame
+local GetTotalCostString   -- forward: builds an inline icon+amount cost string
 
 local function CreateAmountFrame()
     if amountFrame then return amountFrame end
 
     local f = CreateFrame("Frame", "CleanVendorAmountFrame", UIParent)
-    f:SetSize(220, 90)
+    f:SetSize(220, 112)
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
     f:SetFrameStrata("DIALOG")
     f:EnableMouse(true)
@@ -328,6 +331,27 @@ local function CreateAmountFrame()
     eb:SetTextInsets(4, 4, 0, 0)
     f.__editBox = eb
 
+    -- Live total cost, refreshed as the amount changes. Uses inline texture
+    -- escapes (|T...|t) so coin and currency icons render straight inside
+    -- the fontstring, no texture pool needed for this one-off display.
+    local totalFS = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    totalFS:SetPoint("TOP", eb, "BOTTOM", 0, -8)
+    totalFS:SetPoint("LEFT", 8, 0)
+    totalFS:SetPoint("RIGHT", -8, 0)
+    totalFS:SetJustifyH("CENTER")
+    f.__totalFS = totalFS
+
+    local function RefreshTotal()
+        local qty = eb:GetNumber()
+        if f.__index and qty and qty > 0 then
+            local cost = GetTotalCostString(f.__index, qty)
+            totalFS:SetText(L.BUY_TOTAL .. " " .. (cost or ""))
+        else
+            totalFS:SetText("")
+        end
+    end
+    f.__RefreshTotal = RefreshTotal
+
     local function DoAccept()
         if f.__index then
             BuyAmount(f.__index, eb:GetNumber())
@@ -335,6 +359,7 @@ local function CreateAmountFrame()
         f:Hide()
     end
 
+    eb:SetScript("OnTextChanged", RefreshTotal)
     eb:SetScript("OnEnterPressed", DoAccept)
     eb:SetScript("OnEscapePressed", function() f:Hide() end)
 
@@ -361,6 +386,7 @@ local function PromptBuyAmount(index)
     f.__index = index
     f.__title:SetText(L.BUY_PROMPT.."\n"..(name or ""))
     f.__editBox:SetText("")
+    if f.__RefreshTotal then f.__RefreshTotal() end
     f:Show()
     f.__editBox:SetFocus()
 end
@@ -374,6 +400,210 @@ local LINE_HEIGHT = 20
 local panel
 local RefreshList
 local ScheduleNativeTint
+
+-------------------------------------------------
+-- Price rendering (coins + alternate currencies)
+-------------------------------------------------
+-- Coin icon textures (money frame art, present on 3.3.5 / CoA).
+local COIN_ICONS = {
+    gold   = "Interface\\MoneyFrame\\UI-GoldIcon",
+    silver = "Interface\\MoneyFrame\\UI-SilverIcon",
+    copper = "Interface\\MoneyFrame\\UI-CopperIcon",
+}
+local COIN_SIZE = 12
+local PART_GAP = 2        -- gap between an amount and its icon
+local GROUP_GAP = 5       -- gap between two currency groups
+
+-- Pull a reusable fontstring from the line's price pool (creates on demand).
+local function AcquireFontString(line)
+    local pool = line.__priceParts
+    local part = table.remove(pool.__fsFree or {})
+    if not part then
+        part = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    end
+    part:ClearAllPoints()
+    part:Show()
+    return part
+end
+
+-- Pull a reusable texture from the line's price pool.
+local function AcquireTexture(line)
+    local pool = line.__priceParts
+    local part = table.remove(pool.__texFree or {})
+    if not part then
+        part = line:CreateTexture(nil, "OVERLAY")
+    end
+    part:ClearAllPoints()
+    part:SetTexCoord(0, 1, 0, 1)
+    part:SetVertexColor(1, 1, 1)
+    part:Show()
+    return part
+end
+
+-- Release every active price part back to the free lists and hide it.
+local function ResetPriceParts(line)
+    local pool = line.__priceParts
+    pool.__fsFree = pool.__fsFree or {}
+    pool.__texFree = pool.__texFree or {}
+    for _, part in ipairs(pool) do
+        part:Hide()
+        part:ClearAllPoints()
+        if part.GetObjectType and part:GetObjectType() == "FontString" then
+            table.insert(pool.__fsFree, part)
+        else
+            table.insert(pool.__texFree, part)
+        end
+    end
+    wipe(pool)
+end
+
+-- Build the price cluster for a line, laid out RIGHT -> LEFT starting from
+-- the line's __priceAnchor. Returns the total width consumed (so the caller
+-- knows how far the cluster reaches, if ever needed).
+--
+-- Layout order (right to left, matching the game's coin ordering):
+--   [copper icon][copper amount]  [silver icon][silver amount]
+--   [gold icon][gold amount]   then any alternate currency groups.
+-- Alternate currencies (emblems, marks, honor, etc.) are shown as
+-- [currency icon][amount] using the icon returned by the merchant API,
+-- so no localized currency name is needed.
+local function BuildPriceCluster(line, index)
+    ResetPriceParts(line)
+    local pool = line.__priceParts
+    local anchor = line.__priceAnchor
+    local cursor = anchor            -- we chain each part to the LEFT of this
+    local firstGroup = true
+    -- Keep the name's right edge tied to the leftmost price part so a long
+    -- price never overlaps the item name (the name truncates instead).
+    line.__name:SetPoint("RIGHT", anchor, "LEFT", -6, 0)
+
+    -- Helper: place an icon then an amount to the LEFT of `cursor`.
+    -- `gap` is the space between this new group and whatever is already to
+    -- the right. Updates and returns the new cursor (leftmost part).
+    local function AddGroup(iconTexture, amountText, gap, texCoordCrop)
+        -- icon sits just left of cursor
+        local icon = AcquireTexture(line)
+        icon:SetTexture(iconTexture)
+        icon:SetSize(COIN_SIZE, COIN_SIZE)
+        if texCoordCrop then icon:SetTexCoord(unpack(texCoordCrop)) end
+        icon:SetPoint("RIGHT", cursor, "LEFT", -(gap), 0)
+        table.insert(pool, icon)
+
+        local fs = AcquireFontString(line)
+        fs:SetText(amountText)
+        fs:SetJustifyH("RIGHT")
+        fs:SetPoint("RIGHT", icon, "LEFT", -PART_GAP, 0)
+        table.insert(pool, fs)
+
+        cursor = fs
+        firstGroup = false
+    end
+
+    -- 1) Alternate currencies FIRST so, laid out right-to-left, they end up
+    --    on the far right; coins then extend further left. (Feel free to
+    --    flip if you prefer coins on the far right.)
+    -- On CoA, GetMerchantItemCostInfo returns (honorPoints, arenaPoints,
+    -- itemCount): the number of currency slots is the THIRD value, not the
+    -- first as on stock 3.3.5.
+    local costCount = 0
+    local okCount, _honor, _arena, itemCount = pcall(GetMerchantItemCostInfo, index)
+    if okCount and itemCount then costCount = itemCount end
+    for i = costCount, 1, -1 do
+        local okItem, tex, value = pcall(GetMerchantItemCostItem, index, i)
+        if okItem and tex and value and value > 0 then
+            AddGroup(tex, tostring(value), firstGroup and 0 or GROUP_GAP)
+        end
+    end
+
+    -- 2) Coin price (copper). Show copper first (rightmost), then silver,
+    --    then gold, each only if non-zero. If the whole price is zero and
+    --    there is no alternate currency, show nothing.
+    local price = select(3, GetMerchantItemInfo(index)) or 0
+    if price and price > 0 then
+        local gold   = math.floor(price / 10000)
+        local silver = math.floor((price % 10000) / 100)
+        local copper = price % 100
+
+        if copper > 0 or (gold == 0 and silver == 0) then
+            AddGroup(COIN_ICONS.copper, tostring(copper), firstGroup and 0 or GROUP_GAP)
+        end
+        if silver > 0 then
+            AddGroup(COIN_ICONS.silver, tostring(silver), firstGroup and 0 or PART_GAP)
+        end
+        if gold > 0 then
+            AddGroup(COIN_ICONS.gold, tostring(gold), firstGroup and 0 or PART_GAP)
+        end
+    end
+
+    -- Tie the name's right edge to the leftmost part of the cluster (cursor),
+    -- if any part was created. Otherwise it stays on the (empty) anchor.
+    if cursor ~= anchor then
+        line.__name:SetPoint("RIGHT", cursor, "LEFT", -6, 0)
+    end
+end
+
+-- Inline icon escape for a coin/currency texture at COIN_SIZE.
+local function CoinTex(path)
+    return "|T" .. path .. ":" .. COIN_SIZE .. ":" .. COIN_SIZE .. ":0:0|t"
+end
+
+-- Build a display string for the TOTAL cost of buying `qty` units of the
+-- merchant item at `index`, with inline coin / currency icons. Mirrors the
+-- purchase logic in BuyAmount so the figure matches what is actually spent:
+--   * lot items (batch > 1): cost = price-per-purchase * ceil(qty / batch)
+--   * normal items:          cost = price-per-purchase * qty
+-- Alternate-currency values scale the same way. Assigned to the forward
+-- declaration above so CreateAmountFrame (defined earlier) can call it.
+GetTotalCostString = function(index, qty)
+    qty = math.floor(tonumber(qty) or 0)
+    if qty <= 0 then return "" end
+
+    local _, _, price, batch = GetMerchantItemInfo(index)
+    batch = batch or 1
+    price = price or 0
+
+    -- Number of times BuyMerchantItem's cost is actually charged.
+    local units
+    if batch > 1 then
+        units = math.ceil(qty / batch)
+    else
+        units = qty
+    end
+
+    local parts = {}   -- assembled left -> right: gold, silver, copper, then currencies
+
+    -- Coins
+    local totalCopper = price * units
+    if totalCopper > 0 then
+        local gold   = math.floor(totalCopper / 10000)
+        local silver = math.floor((totalCopper % 10000) / 100)
+        local copper = totalCopper % 100
+        if gold > 0 then
+            table.insert(parts, gold .. CoinTex(COIN_ICONS.gold))
+        end
+        if silver > 0 then
+            table.insert(parts, silver .. CoinTex(COIN_ICONS.silver))
+        end
+        if copper > 0 or (gold == 0 and silver == 0) then
+            table.insert(parts, copper .. CoinTex(COIN_ICONS.copper))
+        end
+    end
+
+    -- Alternate currencies (emblems, marks, honor, ...)
+    -- GetMerchantItemCostInfo on CoA returns (honor, arena, itemCount);
+    -- the slot count is the THIRD value.
+    local costCount = 0
+    local okCount, _honor, _arena, itemCount = pcall(GetMerchantItemCostInfo, index)
+    if okCount and itemCount then costCount = itemCount end
+    for i = 1, costCount do
+        local okItem, tex, value = pcall(GetMerchantItemCostItem, index, i)
+        if okItem and tex and value and value > 0 then
+            table.insert(parts, (value * units) .. CoinTex(tex))
+        end
+    end
+
+    return table.concat(parts, "  ")
+end
 
 local function CreateLine(parent, i)
     local line = CreateFrame("Button", nil, parent)
@@ -397,9 +627,19 @@ local function CreateLine(parent, i)
     redOverlay:Hide()
     line.__redOverlay = redOverlay
 
+    -- Price cluster, right-aligned. Anchored to the right edge; each coin
+    -- amount / alternate-currency icon is laid out from right to left inside
+    -- it when the line is refreshed. Pre-create a small pool of coin
+    -- fontstrings and currency-icon textures reused across refreshes.
+    local priceAnchor = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    priceAnchor:SetPoint("RIGHT", line, "RIGHT", -2, 0)
+    priceAnchor:SetText("")
+    line.__priceAnchor = priceAnchor
+    line.__priceParts = {}   -- reusable fontstrings (coin text) + textures (currency icons)
+
     local name = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     name:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-    name:SetPoint("RIGHT", line, "RIGHT", -2, 0)
+    name:SetPoint("RIGHT", priceAnchor, "LEFT", -6, 0)
     name:SetJustifyH("LEFT")
     name:SetHeight(LINE_HEIGHT)
     line.__name = name
@@ -705,6 +945,9 @@ RefreshList = function(rebuild)
             end
             line.__name:SetText(displayName)
 
+            -- Price / currency cluster on the right of the name.
+            pcall(BuildPriceCluster, line, index)
+
             if CleanVendorDB.redTint and IsMerchantItemUnusable(index) then
                 line.__icon:SetDesaturated(true)
                 line.__icon:SetVertexColor(0.9, 0.3, 0.3)
@@ -724,6 +967,7 @@ RefreshList = function(rebuild)
             line:Show()
         else
             line.__index = nil
+            pcall(ResetPriceParts, line)
             line:Hide()
         end
     end
@@ -817,6 +1061,29 @@ SlashCmdList["CLEANVENDOR"] = function(msg)
         if panel and panel:IsShown() then RefreshList(false) end
         if panel and panel.__RefreshOptions then panel.__RefreshOptions() end
         ScheduleNativeTint()
+    elseif msg:find("^diag") then
+        -- /cvd diag N  -> inspect the cost API for merchant item index N.
+        -- Prints every return value of GetMerchantItemInfo and, for each
+        -- cost slot, every return of GetMerchantItemCostItem with its type,
+        -- so the real signature/indexing on this client can be confirmed.
+        local n = tonumber(msg:match("diag%s+(%d+)")) or 1
+        print(MSG .. "diag merchant item #" .. n)
+        local name, tex, price, qty, avail, usable, extended = GetMerchantItemInfo(n)
+        print(("  Info: name=%s price=%s qty=%s extendedCost=%s")
+            :format(tostring(name), tostring(price), tostring(qty), tostring(extended)))
+        local okC, honor, arena, count = pcall(GetMerchantItemCostInfo, n)
+        print(("  CostInfo: honor=%s arena=%s itemCount=%s (ok=%s)")
+            :format(tostring(honor), tostring(arena), tostring(count), tostring(okC)))
+        local slots = (okC and count and count > 0 and count) or 3   -- probe up to 3 as fallback
+        for i = 1, slots do
+            local rets = { pcall(GetMerchantItemCostItem, n, i) }
+            local ok = table.remove(rets, 1)
+            local desc = {}
+            for j, v in ipairs(rets) do
+                desc[j] = j .. ":" .. type(v) .. "=" .. tostring(v)
+            end
+            print(("  Cost[%d] ok=%s  %s"):format(i, tostring(ok), table.concat(desc, "  ")))
+        end
     else
         print(MSG .. L.HELP_HEADER)
         print(L.HELP_RED)
