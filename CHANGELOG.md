@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.7
+- Talking to an NPC whose only gossip option is to vend (no quests, no other gossip choices) now skips straight to the merchant window instead of showing that one-option gossip page. Hold Shift while talking to the NPC to disable this and see the gossip page as normal.
+
 ## 1.6
 - Each list line now shows the item's **price** on the right, using **currency icons** instead of names: gold/silver/copper for money, and the icon returned by the merchant API for alternate currencies (Valor, Marks, emblems, honor…). Mixed money+token costs are supported.
 - The **Alt+right-click amount prompt** now shows a **live total cost** (price × amount, with icons) that updates as you type. The total mirrors the real purchase logic, so lot-sold items (e.g. 5 per purchase) are counted per lot, not per unit.

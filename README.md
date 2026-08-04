@@ -9,6 +9,7 @@ A search panel attached to merchant windows for **WoW 3.3.5**, built and tested 
 - **Price display** on the right of each line, using **currency icons** rather than text: gold/silver/copper for money, and the proper icon for alternate currencies (Valor, Marks, emblems, honor…). Works with items that cost a mix of money and tokens.
 - **Red-gray tint** on combat gear you **cannot equip** (missing weapon/armor proficiency) — both in the list and on the native merchant grid
 - **Quick buying** from the list: right-click = buy 1, **Alt+right-click = choose any amount** (automatically splits beyond stack size: ask for 300 potions and the addon chains the purchases). The amount prompt shows a **live total cost** with currency icons that updates as you type.
+- **Auto-skip to the merchant window**: talking to an NPC whose only gossip option is to vend (no quests, no other gossip choices) opens the merchant window directly instead of showing that one-option gossip page. Hold **Shift** while talking to the NPC to see the gossip page as normal instead.
 - Full item tooltip on hover; Shift+left-click to link an item in chat
 - Automatic **EN/FR localization** based on the client language
 

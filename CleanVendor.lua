@@ -1090,11 +1090,30 @@ SlashCmdList["CLEANVENDOR"] = function(msg)
     end
 end
 
+-- If an NPC's gossip has nothing but a single "vendor" entry (no quests, no
+-- other gossip choices), skip straight to the merchant window instead of
+-- showing that one-option gossip page. Hold Shift while talking to the NPC
+-- to disable this and see the gossip page as normal.
+local function MaybeAutoSkipToVendor()
+    if IsShiftKeyDown() then return end
+    if (GetNumGossipActiveQuests and GetNumGossipActiveQuests() or 0) > 0 then return end
+    if (GetNumGossipAvailableQuests and GetNumGossipAvailableQuests() or 0) > 0 then return end
+
+    local numOptions = GetNumGossipOptions and GetNumGossipOptions() or (#{ GetGossipOptions() } / 2)
+    if numOptions ~= 1 then return end
+
+    local _, gossipType = GetGossipOptions()
+    if gossipType == "vendor" then
+        SelectGossipOption(1)
+    end
+end
+
 -------------------------------------------------
 -- Init / merchant events
 -------------------------------------------------
 local watcher = CreateFrame("Frame")
 watcher:RegisterEvent("ADDON_LOADED")
+watcher:RegisterEvent("GOSSIP_SHOW")
 watcher:RegisterEvent("MERCHANT_SHOW")
 watcher:RegisterEvent("MERCHANT_UPDATE")
 watcher:RegisterEvent("MERCHANT_CLOSED")
@@ -1103,6 +1122,9 @@ watcher:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "CleanVendor" then
         if CleanVendorDB.redTint == nil then CleanVendorDB.redTint = true end
         if CleanVendorDB.redTintNative == nil then CleanVendorDB.redTintNative = true end
+    elseif event == "GOSSIP_SHOW" then
+        local ok, err = pcall(MaybeAutoSkipToVendor)
+        if not ok then print(MSG .. tostring(err)) end
     elseif event == "MERCHANT_SHOW" then
         wipe(tooltipCache)
         searchText = ""
