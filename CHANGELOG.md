@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8
+- Added an "Auto-skip to vendor" checkbox to the addon's options panel, to turn the 1.7 auto-skip feature off entirely instead of having to hold Shift every time.
+
 ## 1.7
 - Talking to an NPC whose only gossip option is to vend (no quests, no other gossip choices) now skips straight to the merchant window instead of showing that one-option gossip page. Hold Shift while talking to the NPC to disable this and see the gossip page as normal.
 

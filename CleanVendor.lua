@@ -22,6 +22,7 @@ local LOCALES = {
         OPT_HEADER    = "Options",
         OPT_RED       = "Red tint on unusable gear",
         OPT_RED_NATIVE = "Also tint the merchant grid",
+        OPT_AUTOSKIP  = "Auto-skip to vendor (Shift to disable)",
         MSG_RED_ON    = "red tint on unusable items: enabled.",
         MSG_RED_OFF   = "red tint on unusable items: disabled.",
         HELP_HEADER   = "available commands:",
@@ -41,6 +42,7 @@ local LOCALES = {
         OPT_HEADER    = "Options",
         OPT_RED       = "Teinte rouge sur le stuff inutilisable",
         OPT_RED_NATIVE = "Teinter aussi la grille du marchand",
+        OPT_AUTOSKIP  = "Passage direct au vendeur (Shift pour desactiver)",
         MSG_RED_ON    = "teinte rouge sur les objets inutilisables : activee.",
         MSG_RED_OFF   = "teinte rouge sur les objets inutilisables : desactivee.",
         HELP_HEADER   = "commandes disponibles:",
@@ -690,7 +692,7 @@ local function CreatePanel()
     if panel then return panel end
 
     local f = CreateFrame("Frame", "CleanVendorPanel", MerchantFrame)
-    f:SetSize(230, 58 + NUM_LINES * LINE_HEIGHT + 66)
+    f:SetSize(230, 58 + NUM_LINES * LINE_HEIGHT + 88)
     f:SetPoint("TOPLEFT", MerchantFrame, "TOPRIGHT", -30, -12)
     -- LOW strata: stays above the world but below standard interface
     -- windows (item appearance preview, etc.), so the panel never covers
@@ -896,6 +898,9 @@ local function CreatePanel()
     MakeOption("CleanVendorOptRedNative", L.OPT_RED_NATIVE, 26,
         function() return CleanVendorDB.redTintNative end,
         function(v) CleanVendorDB.redTintNative = v end)
+    MakeOption("CleanVendorOptAutoSkip", L.OPT_AUTOSKIP, 48,
+        function() return CleanVendorDB.autoSkipVendor end,
+        function(v) CleanVendorDB.autoSkipVendor = v end)
 
     f.__RefreshOptions = function()
         for _, cb in ipairs(f.__optionButtons) do
@@ -1095,6 +1100,7 @@ end
 -- showing that one-option gossip page. Hold Shift while talking to the NPC
 -- to disable this and see the gossip page as normal.
 local function MaybeAutoSkipToVendor()
+    if not CleanVendorDB.autoSkipVendor then return end
     if IsShiftKeyDown() then return end
     if (GetNumGossipActiveQuests and GetNumGossipActiveQuests() or 0) > 0 then return end
     if (GetNumGossipAvailableQuests and GetNumGossipAvailableQuests() or 0) > 0 then return end
@@ -1122,6 +1128,7 @@ watcher:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == "CleanVendor" then
         if CleanVendorDB.redTint == nil then CleanVendorDB.redTint = true end
         if CleanVendorDB.redTintNative == nil then CleanVendorDB.redTintNative = true end
+        if CleanVendorDB.autoSkipVendor == nil then CleanVendorDB.autoSkipVendor = true end
     elseif event == "GOSSIP_SHOW" then
         local ok, err = pcall(MaybeAutoSkipToVendor)
         if not ok then print(MSG .. tostring(err)) end
