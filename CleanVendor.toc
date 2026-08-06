@@ -3,7 +3,7 @@
 ## Notes: Search bar and filters for merchant windows (weapon/armor types, one-hand/two-hand), tooltip text search, price and currency icons per item, red-gray tint on items you cannot equip, and auto-skip to the merchant window for vendor-only NPCs. Standalone.
 ## Notes-frFR: Barre de recherche et filtres chez les vendeurs (types d'armes/armures, 1 main/2 mains), recherche dans le texte des tooltips, prix et icones de monnaie par objet, teinte rouge-grisee sur les objets non equipables, et passage direct a la fenetre marchand pour les PNJ vendeurs uniquement. Autonome.
 ## Author: Hazas
-## Version: 1.8
+## Version: 1.9
 ## SavedVariables: CleanVendorDB
 
 CleanVendor.lua

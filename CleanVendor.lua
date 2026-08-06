@@ -679,6 +679,11 @@ local function CreateLine(parent, i)
             else
                 BuyMerchantItem(self.__index)
             end
+        elseif button == "LeftButton" and IsControlKeyDown() then
+            -- Same as the base UI: Ctrl+left-click previews the item on your
+            -- character (dressing room).
+            local link = GetMerchantItemLink(self.__index)
+            if link then DressUpItemLink(link) end
         elseif button == "LeftButton" and IsShiftKeyDown() then
             local link = GetMerchantItemLink(self.__index)
             if link and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end

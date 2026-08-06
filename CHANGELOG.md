@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9
+- Ctrl+left-click a line in the list now previews the item on your character (dressing room), matching the base UI's behavior on item links.
+
 ## 1.8
 - Added an "Auto-skip to vendor" checkbox to the addon's options panel, to turn the 1.7 auto-skip feature off entirely instead of having to hold Shift every time.
 
